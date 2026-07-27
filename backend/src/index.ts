@@ -82,8 +82,10 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 // Initialize WebSocket
 initializeWebSocket(httpServer)
 
-httpServer.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`)
-})
+if (!process.env.VERCEL) {
+  httpServer.listen(PORT, () => {
+    console.log(`Servidor rodando na porta ${PORT}`)
+  })
+}
 
 export default app
