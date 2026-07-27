@@ -19,7 +19,7 @@ import establishmentRoutes from './routes/establishment'
 import { initializeWebSocket } from './websocket'
 import { generalLimiter, loginLimiter } from './middleware/rateLimit'
 import { securityHeaders, securityLogger } from './middleware/security'
-import { ensureMasterUser } from './bootstrap'
+import { ensureMasterUser, ensurePriceTableSchema } from './bootstrap'
 
 dotenv.config()
 
@@ -135,6 +135,7 @@ async function runBootstrap() {
     console.log(`[BOOTSTRAP] Banco de dados conectado (${Date.now() - dbStart}ms)`)
 
     await ensureMasterUser(prisma)
+    await ensurePriceTableSchema(prisma)
     console.log('[BOOTSTRAP] Bootstrap concluído com sucesso.')
   } catch (err) {
     console.error('[BOOTSTRAP] FALHA CRÍTICA NA INICIALIZAÇÃO:', err)

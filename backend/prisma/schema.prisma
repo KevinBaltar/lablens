@@ -247,9 +247,10 @@ model PriceTable {
   id            String    @id @default(cuid())
   filename      String
   originalName  String
-  path          String
+  path          String?
   mimeType      String
   size          Int
+  data          Bytes?    @db.ByteA
   active        Boolean   @default(true)
   createdAt     DateTime  @default(now())
 }

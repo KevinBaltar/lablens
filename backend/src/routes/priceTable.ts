@@ -7,25 +7,30 @@ import { authenticate, requireMaster } from '../middleware/auth'
 
 const router = Router()
 
-// Configuração do Multer
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(process.cwd(), 'uploads')
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true })
-    }
-    cb(null, uploadDir)
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-    cb(null, uniqueSuffix + path.extname(file.originalname))
-  },
-})
+const isServerless = !!process.env.VERCEL
+
+const storage = isServerless
+  ? multer.memoryStorage()
+  : multer.diskStorage({
+      destination: (req, file, cb) => {
+        const uploadDir = path.join(process.cwd(), 'uploads')
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true })
+        }
+        cb(null, uploadDir)
+      },
+      filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+        cb(null, uniqueSuffix + path.extname(file.originalname))
+      },
+    })
+
+const MAX_SIZE_BYTES = 8 * 1024 * 1024
 
 const upload = multer({
   storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB
+    fileSize: MAX_SIZE_BYTES,
   },
   fileFilter: (req, file, cb) => {
     const allowedMimes = ['application/pdf']
@@ -37,46 +42,86 @@ const upload = multer({
   },
 })
 
-async function isPdf(filePath: string): Promise<boolean> {
-  const handle = await fs.promises.open(filePath, 'r')
+function fileBufferFrom(file: Express.Multer.File): Buffer | null {
+  if (Buffer.isBuffer((file as any).buffer)) {
+    return (file as any).buffer
+  }
+  if (file.path && fs.existsSync(file.path)) {
+    try {
+      return fs.readFileSync(file.path)
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+function isPdfBuffer(buffer: Buffer): boolean {
+  if (buffer.length < 5) return false
+  return buffer.subarray(0, 5).toString('ascii') === '%PDF-'
+}
+
+async function cleanupLocalFile(file: Express.Multer.File) {
   try {
-    const buffer = Buffer.alloc(5)
-    await handle.read(buffer, 0, 5, 0)
-    return buffer.toString('ascii') === '%PDF-'
-  } finally {
-    await handle.close()
+    if (file.path && fs.existsSync(file.path)) {
+      await fs.promises.unlink(file.path)
+    }
+  } catch {
+    // ignore
   }
 }
 
-// Upload de tabela de preços
 router.post('/', authenticate, requireMaster, upload.single('file'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Arquivo não fornecido' })
     }
 
-    if (!await isPdf(req.file.path)) {
-      await fs.promises.unlink(req.file.path)
-      return res.status(400).json({ error: 'Arquivo PDF inválido' })
+    const fileBuffer = fileBufferFrom(req.file)
+    if (!fileBuffer) {
+      await cleanupLocalFile(req.file)
+      return res.status(400).json({ error: 'Não foi possível ler o arquivo enviado' })
     }
 
-    // Desativar tabela anterior
+    if (fileBuffer.length > MAX_SIZE_BYTES) {
+      await cleanupLocalFile(req.file)
+      return res.status(400).json({ error: `Arquivo excede o tamanho máximo permitido de ${MAX_SIZE_BYTES / (1024 * 1024)}MB` })
+    }
+
+    if (!isPdfBuffer(fileBuffer)) {
+      await cleanupLocalFile(req.file)
+      return res.status(400).json({ error: 'Apenas arquivos PDF válidos são permitidos' })
+    }
+
     await prisma.priceTable.updateMany({
       where: { active: true },
       data: { active: false },
     })
 
-    // Criar nova tabela
+    const filename = `${Date.now()}-${Math.round(Math.random() * 1E9)}.pdf`
+    const originalName = path.basename(req.file.originalname).replace(/["\\\r\n]/g, '_')
+
     const priceTable = await prisma.priceTable.create({
       data: {
-        filename: req.file.filename,
-        originalName: path.basename(req.file.originalname).replace(/["\\\r\n]/g, '_'),
-        path: req.file.path,
+        filename,
+        originalName,
+        path: req.file.path || null,
         mimeType: 'application/pdf',
-        size: req.file.size,
+        size: fileBuffer.length,
+        data: Buffer.from(fileBuffer),
         active: true,
       },
+      select: {
+        id: true,
+        originalName: true,
+        size: true,
+        mimeType: true,
+        active: true,
+        createdAt: true,
+      },
     })
+
+    await cleanupLocalFile(req.file)
 
     return res.status(201).json(priceTable)
   } catch (error) {
@@ -85,7 +130,6 @@ router.post('/', authenticate, requireMaster, upload.single('file'), async (req:
   }
 })
 
-// Download da tabela ativa
 router.get('/download', authenticate, async (req: Request, res: Response) => {
   try {
     const priceTable = await prisma.priceTable.findFirst({
@@ -97,27 +141,42 @@ router.get('/download', authenticate, async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Nenhuma tabela de preços disponível' })
     }
 
-    if (!fs.existsSync(priceTable.path)) {
-      return res.status(404).json({ error: 'Arquivo não encontrado' })
+    const safeName = priceTable.originalName.replace(/["\\\r\n]/g, '_') || 'tabela-precos.pdf'
+
+    if (Buffer.isBuffer(priceTable.data) && priceTable.data.length > 0) {
+      res.setHeader('Content-Type', priceTable.mimeType)
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`)
+      res.setHeader('Content-Length', String(priceTable.data.length))
+      return res.end(priceTable.data)
     }
 
-    res.setHeader('Content-Type', priceTable.mimeType)
-    res.setHeader('Content-Disposition', `attachment; filename="${priceTable.originalName}"`)
+    if (priceTable.path && fs.existsSync(priceTable.path)) {
+      res.setHeader('Content-Type', priceTable.mimeType)
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`)
+      const fileStream = fs.createReadStream(priceTable.path)
+      return fileStream.pipe(res)
+    }
 
-    const fileStream = fs.createReadStream(priceTable.path)
-    fileStream.pipe(res)
+    return res.status(404).json({ error: 'Arquivo não encontrado' })
   } catch (error) {
     console.error('Download price table error:', error)
     return res.status(500).json({ error: 'Erro interno do servidor' })
   }
 })
 
-// Listar tabelas (apenas ativa)
 router.get('/', authenticate, async (req: Request, res: Response) => {
   try {
     const priceTable = await prisma.priceTable.findFirst({
       where: { active: true },
       orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        originalName: true,
+        size: true,
+        mimeType: true,
+        active: true,
+        createdAt: true,
+      },
     })
 
     return res.json(priceTable || null)
@@ -127,7 +186,6 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
   }
 })
 
-// Deletar tabela ativa
 router.delete('/:id', authenticate, requireMaster, async (req: Request, res: Response) => {
   try {
     const { id } = req.params
@@ -140,9 +198,12 @@ router.delete('/:id', authenticate, requireMaster, async (req: Request, res: Res
       return res.status(404).json({ error: 'Tabela não encontrada' })
     }
 
-    // Deletar arquivo físico
-    if (fs.existsSync(priceTable.path)) {
-      fs.unlinkSync(priceTable.path)
+    try {
+      if (priceTable.path && fs.existsSync(priceTable.path)) {
+        fs.unlinkSync(priceTable.path)
+      }
+    } catch {
+      // ignore
     }
 
     await prisma.priceTable.delete({ where: { id } })

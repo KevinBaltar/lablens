@@ -64,3 +64,39 @@ export async function ensureMasterUser(prisma: PrismaClient): Promise<void> {
     throw error
   }
 }
+
+export async function ensurePriceTableSchema(prisma: PrismaClient): Promise<void> {
+  try {
+    const hasDataColumn = await prisma.$queryRaw<{ exists: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'PriceTable' AND column_name = 'data'
+      ) AS "exists"
+    `
+
+    if (!hasDataColumn?.[0]?.exists) {
+      console.log('[BOOTSTRAP] Adicionando coluna "data" BYTEA na tabela PriceTable...')
+      await prisma.$executeRawUnsafe(`ALTER TABLE IF EXISTS "PriceTable" ADD COLUMN IF NOT EXISTS "data" BYTEA;`)
+      console.log('[BOOTSTRAP] Coluna "data" adicionada com sucesso.')
+    } else {
+      console.log('[BOOTSTRAP] Coluna "data" da PriceTable já existe.')
+    }
+
+    const pathNullableCheck = await prisma.$queryRaw<{ is_nullable: string }[]>`
+      SELECT is_nullable AS "is_nullable"
+      FROM information_schema.columns
+      WHERE table_name = 'PriceTable' AND column_name = 'path'
+      LIMIT 1
+    `
+
+    if (pathNullableCheck?.[0]?.is_nullable === 'NO') {
+      console.log('[BOOTSTRAP] Tornando coluna "path" da PriceTable nullable...')
+      await prisma.$executeRawUnsafe(`ALTER TABLE IF EXISTS "PriceTable" ALTER COLUMN "path" DROP NOT NULL;`)
+      console.log('[BOOTSTRAP] Coluna "path" atualizada para nullable.')
+    } else {
+      console.log('[BOOTSTRAP] Coluna "path" já é nullable.')
+    }
+  } catch (error) {
+    console.warn('[BOOTSTRAP] Não foi possível verificar/atualizar schema da PriceTable (talvez tabela ainda não exista):', error instanceof Error ? error.message : error)
+  }
+}
