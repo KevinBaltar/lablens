@@ -35,7 +35,13 @@ app.use(securityLogger)
 
 // CORS
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    if (!origin || origin.includes('localhost') || origin === process.env.CORS_ORIGIN || origin.endsWith('.vercel.app')) {
+      callback(null, true);
+    } else {
+      callback(null, false);
+    }
+  },
   credentials: true,
 }))
 

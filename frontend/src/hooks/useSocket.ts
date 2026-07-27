@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { useAuth } from '../contexts/AuthContext'
 
-const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+const SOCKET_URL = import.meta.env.VITE_API_URL 
+  ? import.meta.env.VITE_API_URL.replace('/api', '') 
+  : (import.meta.env.DEV ? 'http://localhost:3001' : window.location.origin)
 
 export function useSocket() {
   const { user } = useAuth()
