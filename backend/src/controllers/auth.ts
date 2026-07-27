@@ -4,11 +4,13 @@ import { hashPassword, comparePassword } from '../utils/password'
 import { generateToken } from '../utils/token'
 import { LoginInput, RegisterInput } from '../validations/auth'
 
+const isSecureEnvironment = process.env.NODE_ENV === 'production' || !!process.env.VERCEL || process.env.HTTPS === 'true'
+
 const COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: isSecureEnvironment,
   sameSite: 'strict' as const,
-  maxAge: 5 * 60 * 60 * 1000, // 5 horas
+  maxAge: 5 * 60 * 60 * 1000,
   path: '/',
 }
 
@@ -123,7 +125,7 @@ export async function register(req: Request, res: Response) {
 export async function logout(_req: Request, res: Response) {
   res.clearCookie('token', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isSecureEnvironment,
     sameSite: 'strict',
     path: '/',
   })

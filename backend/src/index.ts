@@ -34,13 +34,21 @@ app.use(helmet())
 app.use(securityHeaders)
 app.use(securityLogger)
 
-// CORS
+function isOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) return true
+  if (origin.includes('localhost')) return true
+  if (origin === process.env.CORS_ORIGIN) return true
+  if (origin.endsWith('.vercel.app')) return true
+  if (process.env.VERCEL_URL && origin.endsWith(process.env.VERCEL_URL)) return true
+  return false
+}
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || origin.includes('localhost') || origin === process.env.CORS_ORIGIN || origin.endsWith('.vercel.app')) {
-      callback(null, true);
+    if (isOriginAllowed(origin)) {
+      callback(null, true)
     } else {
-      callback(null, false);
+      callback(new Error('Origem não permitida pelo CORS'))
     }
   },
   credentials: true,
@@ -49,7 +57,6 @@ app.use(cors({
 // Body parser + Cookie parser
 app.use(express.json({ limit: '10mb' }))
 app.use(cookieParser())
-app.use(verifyRequestOrigin)
 
 // Rate limiting
 app.use('/api/', generalLimiter)

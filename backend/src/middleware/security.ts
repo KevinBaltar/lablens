@@ -5,6 +5,7 @@ function isOriginAllowed(origin: string | undefined): boolean {
   if (origin.includes("localhost")) return true;
   if (origin === process.env.CORS_ORIGIN) return true;
   if (origin.endsWith(".vercel.app")) return true;
+  if (process.env.VERCEL_URL && origin.endsWith(process.env.VERCEL_URL)) return true;
   return false;
 }
 
