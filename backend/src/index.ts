@@ -18,7 +18,8 @@ import clientRoutes from './routes/client'
 import establishmentRoutes from './routes/establishment'
 import { initializeWebSocket } from './websocket'
 import { generalLimiter, loginLimiter } from './middleware/rateLimit'
-import { securityHeaders, securityLogger, verifyRequestOrigin } from './middleware/security'
+import { securityHeaders, securityLogger } from './middleware/security'
+import { ensureMasterUser } from './bootstrap'
 
 dotenv.config()
 
@@ -64,8 +65,41 @@ app.use('/api/auth/login', loginLimiter)
 app.use('/api/auth/register', loginLimiter)
 
 // Health check
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+app.get('/api/health', async (_req, res) => {
+  try {
+    const dbStart = Date.now()
+    await prisma.$queryRaw`SELECT 1`
+    const dbLatency = Date.now() - dbStart
+
+    const totalUsers = await prisma.user.count()
+    const masterUsers = await prisma.user.count({ where: { role: 'MASTER' } })
+    const filialUsers = await prisma.user.count({ where: { role: 'FILIAL' } })
+
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      database: {
+        connected: true,
+        latencyMs: dbLatency,
+      },
+      users: {
+        total: totalUsers,
+        master: masterUsers,
+        filial: filialUsers,
+      },
+      env: {
+        nodeEnv: process.env.NODE_ENV || 'development',
+        isVercel: !!process.env.VERCEL,
+      },
+    })
+  } catch (dbError) {
+    console.error('[HEALTH] Database check failed:', dbError)
+    res.status(503).json({
+      status: 'degraded',
+      timestamp: new Date().toISOString(),
+      database: { connected: false, error: String(dbError) },
+    })
+  }
 })
 
 // Routes
@@ -90,9 +124,33 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 // Initialize WebSocket
 initializeWebSocket(httpServer)
 
+// Bootstrap: garante usuário master + conexão DB
+async function runBootstrap() {
+  try {
+    console.log('[BOOTSTRAP] Inicializando backend...')
+    console.log(`[BOOTSTRAP] Ambiente: ${process.env.NODE_ENV || 'development'}${process.env.VERCEL ? ' (Vercel)' : ''}`)
+
+    const dbStart = Date.now()
+    await prisma.$queryRaw`SELECT 1`
+    console.log(`[BOOTSTRAP] Banco de dados conectado (${Date.now() - dbStart}ms)`)
+
+    await ensureMasterUser(prisma)
+    console.log('[BOOTSTRAP] Bootstrap concluído com sucesso.')
+  } catch (err) {
+    console.error('[BOOTSTRAP] FALHA CRÍTICA NA INICIALIZAÇÃO:', err)
+    if (!process.env.VERCEL) {
+      process.exit(1)
+    }
+  }
+}
+
+const bootstrapPromise = runBootstrap()
+
 if (!process.env.VERCEL) {
-  httpServer.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`)
+  bootstrapPromise.then(() => {
+    httpServer.listen(PORT, () => {
+      console.log(`Servidor rodando na porta ${PORT}`)
+    })
   })
 }
 

@@ -18,18 +18,28 @@ export async function login(req: Request, res: Response) {
   try {
     const { email, password } = req.body as LoginInput
 
+    console.log(
+      `[AUTH LOGIN] Tentativa de login: email="${email}" ` +
+      `ip=${req.ip} len(pw)=${password?.length || 0}`,
+    )
+
     const user = await prisma.user.findUnique({
       where: { email },
       include: { filial: true },
     })
 
     if (!user) {
+      console.warn(`[AUTH LOGIN] FALHA: email "${email}" não cadastrado no sistema`)
       return res.status(401).json({ error: 'Credenciais inválidas' })
     }
 
     const validPassword = await comparePassword(password, user.password)
 
     if (!validPassword) {
+      console.warn(
+        `[AUTH LOGIN] FALHA: senha incorreta para email "${email}" ` +
+        `(user_id=${user.id} role=${user.role})`,
+      )
       return res.status(401).json({ error: 'Credenciais inválidas' })
     }
 
@@ -40,8 +50,12 @@ export async function login(req: Request, res: Response) {
       filialId: user.filialId ?? undefined,
     })
 
-    // Set token em cookie httpOnly
     res.cookie('token', token, COOKIE_OPTIONS)
+
+    console.log(
+      `[AUTH LOGIN] SUCESSO: usuário "${user.email}" logado ` +
+      `(user_id=${user.id} role=${user.role} filial=${user.filial?.name || 'N/A'})`,
+    )
 
     return res.json({
       user: {
