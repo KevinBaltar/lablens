@@ -23,7 +23,14 @@ export default function LoginPage({ onForgotPassword }: LoginPageProps) {
     try {
       await login(email, password);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Erro ao fazer login");
+      const apiError = err.response?.data?.error;
+      if (typeof apiError === "string") {
+        setError(apiError);
+      } else if (apiError && typeof apiError === "object" && apiError.message) {
+        setError(apiError.message);
+      } else {
+        setError("Erro ao fazer login");
+      }
     } finally {
       setIsLoading(false);
     }

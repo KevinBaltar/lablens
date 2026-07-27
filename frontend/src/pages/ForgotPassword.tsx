@@ -25,7 +25,14 @@ export default function ForgotPasswordPage({
       await api.post("/auth/forgot-password", { email });
       setSuccess(true);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Erro ao enviar email");
+      const apiError = err.response?.data?.error;
+      if (typeof apiError === "string") {
+        setError(apiError);
+      } else if (apiError && typeof apiError === "object" && apiError.message) {
+        setError(apiError.message);
+      } else {
+        setError("Erro ao enviar email");
+      }
     } finally {
       setIsLoading(false);
     }
