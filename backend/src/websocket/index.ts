@@ -19,11 +19,30 @@ function parseCookies(cookieHeader: string | undefined): Record<string, string> 
 }
 
 export function initializeWebSocket(httpServer: HttpServer) {
+  const allowedOrigin = (origin: string | undefined): boolean => {
+    if (!origin) return true
+    if (origin.includes('localhost')) return true
+    if (origin === process.env.CORS_ORIGIN) return true
+    if (origin.endsWith('.vercel.app')) return true
+    if (process.env.VERCEL_URL && origin.endsWith(process.env.VERCEL_URL)) return true
+    return false
+  }
+
   io = new Server(httpServer, {
     cors: {
-      origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+      origin: (origin, callback) => {
+        if (allowedOrigin(origin)) {
+          callback(null, true)
+        } else {
+          callback(new Error(`Origem ${origin} não permitida pelo WebSocket`))
+        }
+      },
       credentials: true,
     },
+    transports: ['polling', 'websocket'],
+    allowEIO3: true,
+    pingTimeout: 60000,
+    pingInterval: 25000,
   })
 
   // Middleware de autenticação - lê token do cookie
