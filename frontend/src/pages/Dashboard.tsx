@@ -10,6 +10,7 @@ import Profile from './dashboard/Profile'
 import ChangePassword from './dashboard/ChangePassword'
 import LensManagement from './dashboard/LensManagement'
 import FilialManagement from './dashboard/FilialManagement'
+import UserManagement from './dashboard/UserManagement'
 import ClientManagement from './dashboard/ClientManagement'
 import EstablishmentManagement from './dashboard/EstablishmentManagement'
 
@@ -86,6 +87,8 @@ export default function Dashboard() {
         return <LensManagement />
       case 'cadastrar-filial':
         return <FilialManagement />
+      case 'gerenciar-usuarios':
+        return <UserManagement />
       default:
         return <OrderList onSelectOrder={handleSelectOrder} />
     }

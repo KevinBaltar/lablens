@@ -33,6 +33,11 @@ const masterMenuItems = [
     label: "Cadastrar Filial",
     icon: "branch" as const,
   },
+  {
+    id: "gerenciar-usuarios",
+    label: "Gerenciar Usuários",
+    icon: "user" as const,
+  },
 ];
 
 const userMenuItems = [
