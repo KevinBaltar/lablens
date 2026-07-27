@@ -4,6 +4,8 @@ import { useSocket } from "../../hooks/useSocket";
 import { formatDateTime } from "../../lib/utils";
 import Icon from "./Icons";
 
+const POLL_INTERVAL_MS = 10000
+
 export default function NotificationIndicator() {
   const {
     notifications,
@@ -11,10 +13,12 @@ export default function NotificationIndicator() {
     markAsRead,
     markAllAsRead,
     addNotification,
+    refresh,
   } = useNotifications();
-  const { onNotification } = useSocket();
+  const { isConnected, onNotification } = useSocket();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const pollTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     const cleanup = onNotification((notification) => {
@@ -22,6 +26,26 @@ export default function NotificationIndicator() {
     });
     return cleanup;
   }, [onNotification, addNotification]);
+
+  useEffect(() => {
+    if (!isConnected) {
+      pollTimerRef.current = window.setInterval(() => {
+        refresh()
+      }, POLL_INTERVAL_MS)
+    } else {
+      if (pollTimerRef.current) {
+        window.clearInterval(pollTimerRef.current)
+        pollTimerRef.current = null
+      }
+    }
+
+    return () => {
+      if (pollTimerRef.current) {
+        window.clearInterval(pollTimerRef.current)
+        pollTimerRef.current = null
+      }
+    }
+  }, [isConnected, refresh])
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -56,14 +80,21 @@ export default function NotificationIndicator() {
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-gray-900">Notificações</h3>
-              {unreadCount > 0 && (
-                <button
-                  onClick={markAllAsRead}
-                  className="text-sm text-primary-600 hover:text-primary-700"
-                >
-                  Marcar todas como lidas
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {!isConnected && (
+                  <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                    Polling
+                  </span>
+                )}
+                {unreadCount > 0 && (
+                  <button
+                    onClick={markAllAsRead}
+                    className="text-sm text-primary-600 hover:text-primary-700"
+                  >
+                    Marcar todas como lidas
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

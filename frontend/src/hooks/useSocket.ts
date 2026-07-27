@@ -12,6 +12,21 @@ const DEFAULT_TRANSPORTS: ('websocket' | 'polling')[] = isVercel
   ? ['polling', 'websocket']
   : ['websocket', 'polling']
 
+type Noop = () => void
+
+const STUB_SOCKET = {
+  isConnected: false,
+  joinChat: (_o: string) => {},
+  leaveChat: (_o: string) => {},
+  sendMessage: (_o: string, _c: string) => {
+    console.warn('[SOCKET] Desabilitado neste ambiente. Use a API REST.')
+  },
+  onNewMessage: (_cb: any) => (() => {}) as Noop,
+  onNotification: (_cb: any) => (() => {}) as Noop,
+  onOrderUpdate: (_cb: any) => (() => {}) as Noop,
+  socket: null,
+}
+
 export function useSocket() {
   const { user } = useAuth()
   const socketRef = useRef<Socket | null>(null)
@@ -19,6 +34,10 @@ export function useSocket() {
 
   useEffect(() => {
     if (!user) return
+    if (isVercel) {
+      console.warn('[SOCKET] Ambiente Serverless detectado (Vercel) - Socket.io desabilitado para esta sessão. Usando fallback HTTP Polling nos componentes.')
+      return
+    }
 
     const socket = io(SOCKET_URL, {
       withCredentials: true,
@@ -92,6 +111,10 @@ export function useSocket() {
     return () => {
       socketRef.current?.off('order-update', callback)
     }
+  }
+
+  if (isVercel) {
+    return STUB_SOCKET
   }
 
   return {
