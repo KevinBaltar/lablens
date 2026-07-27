@@ -1,0 +1,266 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  password      String
+  role          Role      @default(FILIAL)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  filial        Filial?   @relation(fields: [filialId], references: [id])
+  filialId      String?
+
+  orders        Order[]   @relation("OrderCreatedBy")
+  chatMessages  ChatMessage[]
+  notifications Notification[]
+}
+
+enum Role {
+  MASTER
+  FILIAL
+}
+
+model Filial {
+  id            String    @id @default(cuid())
+  cnpj          String    @unique
+  name          String
+  address       String
+  contact       String
+  email         String
+  phone         String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  users         User[]
+  orders        Order[]
+  clients       Client[]
+  establishments Establishment[]
+}
+
+model Client {
+  id            String    @id @default(cuid())
+  name          String
+  cpf           String?   @unique
+  email         String?
+  phone         String
+  address       String?
+  city          String?
+  state         String?
+  zipCode       String?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  filial        Filial    @relation(fields: [filialId], references: [id])
+  filialId      String
+  orders        Order[]
+}
+
+model Establishment {
+  id            String    @id @default(cuid())
+  name          String
+  type          EstablishmentType
+  cnpj          String?   @unique
+  address       String
+  city          String
+  state         String
+  zipCode       String?
+  phone         String?
+  email         String?
+  responsible   String?
+  notes         String?
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  filial        Filial    @relation(fields: [filialId], references: [id])
+  filialId      String
+}
+
+enum EstablishmentType {
+  LABORATORIO
+  FILIAL
+  DEPOSITO
+  OUTROS
+}
+
+model Lens {
+  id            String    @id @default(cuid())
+  name          String
+  type          LensType
+  addition      Float?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  grades        LensGrade[]
+  orders        Order[]
+}
+
+enum LensType {
+  VISAO_SIMPLES_PRONTA
+  VISAO_SIMPLES_SURFACADA
+  PROGRESSIVA
+  BIFOCAL
+}
+
+model LensGrade {
+  id            String    @id @default(cuid())
+  category      GradeCategory
+  esfericoMin   Float
+  esfericoMax   Float
+  cilindricoMin Float
+  cilindricoMax Float
+  step          Float     @default(0.25)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  lens          Lens      @relation(fields: [lensId], references: [id], onDelete: Cascade)
+  lensId        String
+}
+
+enum GradeCategory {
+  POSITIVA
+  NEGATIVA
+}
+
+model Order {
+  id            String    @id @default(cuid())
+  os            String?
+  clientOS      String?
+  status        OrderStatus @default(PENDENTE)
+  orderType     OrderType
+  quantity      Float
+  patientName   String?
+  notes         String?
+  pedidoPor     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Dados OD
+  odEsf         Float?
+  odCil         Float?
+  odEixo        Float?
+  odAdicao      Float?
+  odCentroOptico Float?
+  odDnp         Float?
+
+  // Dados OE
+  oeEsf         Float?
+  oeCil         Float?
+  oeEixo        Float?
+  oeAdicao      Float?
+  oeCentroOptico Float?
+  oeDnp         Float?
+
+  // Dados da armação (surfaçado)
+  pa            Float?
+  am            Float?
+  vertical      Float?
+  diametro      Float?
+  frameFormat   String?
+
+  // Grade selecionada
+  selectedGrade String?
+
+  // Dados da grade (pedidos em grade)
+  gradeData Json?
+
+  // Relações
+  lens          Lens      @relation(fields: [lensId], references: [id])
+  lensId        String
+  filial        Filial    @relation(fields: [filialId], references: [id])
+  filialId      String
+  createdBy     User      @relation("OrderCreatedBy", fields: [createdById], references: [id])
+  createdById   String
+  client        Client?   @relation(fields: [clientId], references: [id])
+  clientId      String?
+
+  statusHistory StatusHistory[]
+  chat          Chat?
+}
+
+enum OrderStatus {
+  PENDENTE
+  ACEITO
+  RECUSADO
+  CANCELADO
+}
+
+enum OrderType {
+  GRADE
+  PAR_A_PAR
+  SURFACADO
+}
+
+model StatusHistory {
+  id            String    @id @default(cuid())
+  fromStatus    OrderStatus?
+  toStatus      OrderStatus
+  reason        String?
+  createdAt     DateTime  @default(now())
+
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId       String
+}
+
+model Chat {
+  id            String    @id @default(cuid())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId       String    @unique
+  messages      ChatMessage[]
+}
+
+model ChatMessage {
+  id            String    @id @default(cuid())
+  content       String
+  createdAt     DateTime  @default(now())
+
+  chat          Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  chatId        String
+  sender        User      @relation(fields: [senderId], references: [id])
+  senderId      String
+}
+
+model Contact {
+  id            String    @id @default(cuid())
+  name          String
+  department    String
+  phone         String
+  email         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model PriceTable {
+  id            String    @id @default(cuid())
+  filename      String
+  originalName  String
+  path          String
+  mimeType      String
+  size          Int
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+}
+
+model Notification {
+  id            String    @id @default(cuid())
+  title         String
+  message       String
+  read          Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+}
