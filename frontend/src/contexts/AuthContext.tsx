@@ -21,12 +21,24 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+const skipProfileCheckPaths = ['/']
+
+function shouldSkipProfileCheck(pathname: string): boolean {
+  return skipProfileCheckPaths.some(path =>
+    path === '/' ? pathname === '/' : pathname.startsWith(path)
+  )
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Verificar se há sessão válida ao carregar
+    const currentPath = window.location.pathname
+    if (shouldSkipProfileCheck(currentPath)) {
+      setIsLoading(false)
+      return
+    }
     loadUser()
   }, [])
 
@@ -35,7 +47,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data } = await api.get('/auth/profile')
       setUser(data)
     } catch (error) {
-      // Não autenticado ou token expirado
       setUser(null)
     } finally {
       setIsLoading(false)
@@ -44,7 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function login(email: string, password: string) {
     const { data } = await api.post('/auth/login', { email, password })
-    // Token já viene no cookie httpOnly - não precisamos salvar nada
     setUser(data.user)
   }
 
@@ -52,7 +62,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await api.post('/auth/logout')
     } catch (error) {
-      // Mesmo se falhar, limpar estado local
     }
     setUser(null)
   }
